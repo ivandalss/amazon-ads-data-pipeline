@@ -1,0 +1,16 @@
+# Raw source files contain identifiable brand data — never commit
+data/raw/*
+!data/raw/.gitkeep
+
+# Rebuildable artifacts
+data/warehouse.db
+data/processed/*.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
