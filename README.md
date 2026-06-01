@@ -1,24 +1,28 @@
-# Amazon Ads Analytics — SQL Warehouse from Marketplace Reports
+# Amazon Ads Analytics — SQL Warehouse + Marketing Mix Model
 
-A small data engineering project that takes raw Amazon Advertising reports
+A data engineering and analytics project that takes raw Amazon Advertising reports
 (in Excel), anonymizes them, models them into a star-schema SQL warehouse,
-and runs analytical queries to answer real business questions: where to
-harvest profitable keywords, where to cut wasted spend, how ads and organic
-sales interact at the product level.
+runs analytical queries to answer real business questions, and builds a
+**Marketing Mix Model** to decompose sales attribution and optimize budget allocation
+across channels.
 
 ## Architecture
 
 ![architecture](docs/architecture.svg)
 
 | Stage | Language | Module |
-|-------|----------|--------|
-| 1. Read raw .xlsx reports                | Python (pandas) | `src/anonymize.py` |
-| 2. Strip brand names, hash IDs, write CSV | Python          | `src/anonymize.py` |
-| 3. Transform to schema-shaped tables      | Python          | `src/load.py`      |
-| 4. Define warehouse schema                | SQL (DDL)       | `sql/01_schema.sql`|
-| 5. Load tables into SQLite                | Python + SQL    | `src/load.py`      |
-| 6. Analytical queries                     | SQL             | `sql/queries/*.sql`|
-| 7. Notebook narrative & charts            | Python (pandas, matplotlib) | `notebooks/analysis.ipynb` |
+|---|---|---|
+| 1. Read raw .xlsx reports | Python (pandas) | `src/anonymize.py` |
+| 2. Strip brand names, hash IDs, write CSV | Python | `src/anonymize.py` |
+| 3. Transform to schema-shaped tables | Python | `src/load.py` |
+| 4. Define warehouse schema | SQL (DDL) | `sql/01_schema.sql` |
+| 5. Load tables into SQLite | Python + SQL | `src/load.py` |
+| 6. Analytical queries | SQL | `sql/queries/*.sql` |
+| 7. Notebook narrative & charts | Python (pandas, matplotlib) | `notebooks/analysis.ipynb` |
+| 8. MMM data preparation | Python | `src/mmm_prep.py` |
+| 9. MMM model + budget optimizer | Python (scikit-learn, scipy) | `notebooks/mmm_model.ipynb` |
+
+---
 
 ## Data sources
 
@@ -33,18 +37,21 @@ Raw files are **not** committed (they contain identifiable brand data even
 after anonymization). The anonymized CSVs in `data/processed/` are safe
 to commit and reproduce the warehouse.
 
+---
+
 ## Schema
 
-A star schema with three fact tables (different grains) and three shared
-dimensions:
+A star schema with three fact tables (different grains) and three shared dimensions:
 
 - `dim_date`, `dim_campaign`, `dim_product`
-- `fact_ads_daily`  — date × campaign × ASIN grain
+- `fact_ads_daily` — date × campaign × ASIN grain
 - `fact_search_term` — date × campaign × search-query grain
 - `fact_business_report` — snapshot × ASIN grain (ads + organic sales)
 
 Schema is defined in `sql/01_schema.sql` and is dialect-agnostic
 (developed on SQLite, will run on PostgreSQL or any analytical engine).
+
+---
 
 ## Analytical queries
 
@@ -54,27 +61,100 @@ window functions (`ROW_NUMBER`, `LAG`, rolling averages), and conditional
 aggregation.
 
 | File | Question | Techniques |
-|------|----------|------------|
-| `01_campaign_roas_tacos.sql`     | Which campaigns are most efficient on their own ROAS — and how do they look against total business sales (TACoS)? | CTEs, cross-join, aggregation |
+|---|---|---|
+| `01_campaign_roas_tacos.sql` | Which campaigns are most efficient on their own ROAS — and how do they look against total business sales (TACoS)? | CTEs, cross-join, aggregation |
 | `02_harvestable_search_terms.sql` | Which broad/auto search terms have converted profitably and should be promoted to exact-match campaigns? | `ROW_NUMBER`, partitioned ranking |
-| `03_wasted_spend.sql`             | Which search terms are burning budget without converting? Candidates for negative keywords. | Conditional logic, filtering on aggregates |
-| `04_ads_vs_organic_synergy.sql`   | For each product: what share of sales is from ads vs organic? Where is ad dependency too high? | Multi-fact join, label classification |
-| `05_daily_trend_anomalies.sql`    | Daily spend and ROAS trend with rolling 7-day average and anomaly flags. | `LAG`, window functions, rolling averages |
+| `03_wasted_spend.sql` | Which search terms are burning budget without converting? Candidates for negative keywords. | Conditional logic, filtering on aggregates |
+| `04_ads_vs_organic_synergy.sql` | For each product: what share of sales is from ads vs organic? Where is ad dependency too high? | Multi-fact join, label classification |
+| `05_daily_trend_anomalies.sql` | Daily spend and ROAS trend with rolling 7-day average and anomaly flags. | `LAG`, window functions, rolling averages |
+
+---
+
+## Marketing Mix Model
+
+`src/mmm_prep.py` + `notebooks/mmm_model.ipynb`
+
+The MMM layer sits on top of the warehouse and answers the question that
+no last-click attribution model can: **what actually caused the sales?**
+
+### What it does
+
+1. **Data prep** (`src/mmm_prep.py`) — pulls weekly aggregated spend and
+   sales from the warehouse, applies adstock and Hill saturation transforms,
+   and generates a synthetic 2-year dataset (see note below).
+
+2. **Model** (`notebooks/mmm_model.ipynb`) — fits an OLS regression with
+   transformed channel spend as features, decomposes total sales into
+   baseline organic + channel contributions + seasonality, and runs a
+   budget optimizer via `scipy.optimize`.
+
+3. **Outputs** — five charts saved to `data/mmm/`:
+
+| Chart | What it shows |
+|---|---|
+| `01_eda_overview.png` | Weekly spend by channel, total vs organic sales, TACoS trend, spend/sales scatter |
+| `02_sales_decomposition.png` | Stacked area of sales by source + attribution pie chart |
+| `03_response_curves.png` | Diminishing returns curve per channel with marginal return at current spend |
+| `04_budget_optimizer.png` | Current vs recommended budget allocation (same total spend) |
+| `05_actual_vs_predicted.png` | Model fit — actual vs predicted with R² and MAPE |
+
+### Key results (synthetic dataset)
+
+| Channel | Sales attribution | Marginal return at avg spend |
+|---|---|---|
+| Baseline organic | 47.4% | — |
+| Sponsored Products | 41.7% | $3.40 per $1 |
+| Sponsored Brands | 7.8% | $1.67 per $1 |
+| DSP | 3.0% | $0.70 per $1 |
+
+Model fit: **R² = 0.995 · MAPE = 2.32%**
+
+### Note on data
+
+> The sample dataset covers ~5 weeks — insufficient for causal MMM inference
+> (minimum 52 weeks recommended). `src/mmm_prep.py` generates a realistic
+> 2-year synthetic dataset with known ground-truth parameters, allowing full
+> model validation. The pipeline, transforms, and model code are
+> production-ready: swap in real data with ≥52 weeks and re-run.
+
+### MMM transforms
+
+- **Adstock (geometric decay)** — models the carry-over effect of advertising.
+  SP decay=0.5, SB decay=0.3, DSP decay=0.7 (DSP has highest brand awareness persistence).
+- **Hill saturation** — models diminishing returns as spend increases.
+  Half-saturation points: SP=$3000, SB=$1500, DSP=$1000.
+
+### Production improvements (not in scope here)
+- Bayesian MMM with PyMC for posterior distributions and uncertainty quantification
+- Grid search / MCMC to optimize adstock and saturation parameters (currently fixed)
+- External regressors: price index, competitor activity, macro indicators
+- Minimum spend constraints in budget optimizer per channel
+- Orchestration via Airflow DAG
+
+---
 
 ## How to run
 
 Prerequisites: Python 3.11+, `pip install -r requirements.txt`.
 
 ```bash
-# 1. Place raw .xlsx files in data/raw/  (filenames as in /raw/.gitkeep)
+# 1. Place raw .xlsx files in data/raw/
 # 2. Anonymize:
 python src/anonymize.py
 # 3. Build warehouse:
 python src/load.py
-# 4. Open notebooks/analysis.ipynb and run all cells.
+# 4. Ads analytics notebook:
+#    Open notebooks/analysis.ipynb and run all cells.
+
+# 5. MMM prep (generates synthetic data if warehouse is empty):
+python src/mmm_prep.py
+# 6. MMM model + optimizer:
+#    Open notebooks/mmm_model.ipynb and run all cells.
 ```
 
-End-to-end runtime on the sample dataset: ~10 seconds.
+End-to-end runtime on the sample dataset: ~15 seconds.
+
+---
 
 ## What this project demonstrates
 
@@ -85,21 +165,27 @@ End-to-end runtime on the sample dataset: ~10 seconds.
 - **Data-quality awareness:** anonymization layer, deterministic ID
   hashing (joins still work), documented mismatches (e.g., Parent vs
   Child ASIN coverage between facts).
-- **Marketing measurement thinking:** the SQL questions are real
-  questions from agency life — TACoS vs ACoS, harvesting, negative
-  keywords, ads-vs-organic synergy.
+- **Marketing measurement thinking:** TACoS vs ACoS, keyword harvesting,
+  negative keywords, ads-vs-organic synergy — real questions from agency life.
+- **MMM methodology:** adstock transforms, Hill saturation, OLS decomposition,
+  budget optimization via constrained numerical optimization.
+- **Engineering trade-offs:** SQLite for portability (Postgres/BigQuery in
+  production), no orchestration for a 2-script pipeline (Airflow DAG in
+  production), synthetic data with documented limitations.
+
+---
 
 ## What's intentionally not in scope (and why)
 
-- No orchestration tool (Airflow/Prefect): two scripts run in order is
+- **No orchestration tool (Airflow/Prefect):** two scripts run in order is
   fine for a 4-source pipeline. In production, this would be a DAG.
-- No managed warehouse (Snowflake/BigQuery): SQLite makes the project
-  reproducible without cloud credentials. Schema and queries are
-  portable.
-- No streaming: marketplace reports are batch by nature.
-- No marketing-mix modeling: that's a separate project on top of this
-  warehouse. This project ends at "data is queryable"; the MMM lives
-  downstream.
+- **No managed warehouse (Snowflake/BigQuery):** SQLite makes the project
+  reproducible without cloud credentials. Schema and queries are portable.
+- **No streaming:** marketplace reports are batch by nature.
+- **No Bayesian MMM:** OLS demonstrates the methodology cleanly.
+  PyMC version is the documented next step.
+
+---
 
 ## File structure
 
@@ -110,8 +196,9 @@ End-to-end runtime on the sample dataset: ~10 seconds.
 ├── docs/
 │   └── architecture.svg
 ├── src/
-│   ├── anonymize.py
-│   └── load.py
+│   ├── anonymize.py          # PII stripping + deterministic hashing
+│   ├── load.py               # ETL → SQLite warehouse
+│   └── mmm_prep.py           # Weekly aggregation + synthetic data generator
 ├── sql/
 │   ├── 01_schema.sql
 │   └── queries/
@@ -121,9 +208,11 @@ End-to-end runtime on the sample dataset: ~10 seconds.
 │       ├── 04_ads_vs_organic_synergy.sql
 │       └── 05_daily_trend_anomalies.sql
 ├── notebooks/
-│   └── analysis.ipynb
+│   ├── analysis.ipynb        # SQL analytics narrative + charts
+│   └── mmm_model.ipynb       # MMM model, decomposition, budget optimizer
 └── data/
-    ├── raw/           # .gitignored — contains identifiable .xlsx
-    ├── processed/     # safe to commit — anonymized .csv
-    └── warehouse.db   # .gitignored — rebuild with `python src/load.py`
+    ├── raw/                  # .gitignored — identifiable .xlsx files
+    ├── processed/            # anonymized .csv — safe to commit
+    ├── mmm/                  # weekly_synthetic.csv + output charts
+    └── warehouse.db          # .gitignored — rebuild with python src/load.py
 ```
