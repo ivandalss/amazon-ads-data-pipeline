@@ -14,3 +14,8 @@ __pycache__/
 
 # OS
 .DS_Store
+ 
+# dbt 
+amazon_ads_dbt/target/ 
+amazon_ads_dbt/dbt_packages/ 
+logs/ 

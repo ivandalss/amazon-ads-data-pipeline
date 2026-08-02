@@ -1,0 +1,65 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: "Date dimension spanning 2025-01-01 to 2026-12-31, one row per day."
+    columns:
+      - name: date_id
+        description: "Primary key - the calendar date."
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_campaign
+    description: "Campaign dimension, deduplicated from the bulk file. One row per campaign_id."
+    columns:
+      - name: campaign_id
+        description: "Primary key - unique campaign identifier (hashed)."
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_product
+    description: "Product dimension, deduplicated from the bulk file. One row per SKU."
+    columns:
+      - name: sku
+        description: "Primary key - unique SKU identifier."
+        data_tests:
+          - unique
+          - not_null
+
+  - name: fact_ads_daily
+    description: "Daily advertising performance grain: date x campaign x ASIN."
+    columns:
+      - name: date_id
+        description: "Foreign key to dim_date."
+        data_tests:
+          - not_null
+      - name: asin
+        description: "Foreign key to dim_product (via ASIN)."
+        data_tests:
+          - not_null
+      - name: impressions
+        description: "Total impressions for the day/campaign/ASIN combination."
+        data_tests:
+          - not_null
+
+  - name: fact_search_term
+    description: "Daily search term performance grain: date x campaign x search term x match type."
+    columns:
+      - name: date_id
+        data_tests:
+          - not_null
+      - name: customer_search_term
+        description: "The actual search query that triggered the ad."
+        data_tests:
+          - not_null
+
+  - name: fact_business_report
+    description: "Business report snapshot grain: one row per ASIN, includes organic + ad sales."
+    columns:
+      - name: parent_asin
+        description: "Primary key - parent ASIN (hashed)."
+        data_tests:
+          - unique
+          - not_null

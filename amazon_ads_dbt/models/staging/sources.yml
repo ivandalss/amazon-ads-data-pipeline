@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: amazon_ads_raw
+    database: amazon-ads-mmm
+    schema: amazon_ads_warehouse
+    tables:
+      - name: raw_bulk_campaigns
+      - name: raw_search_terms
+      - name: raw_advertised_products
+      - name: raw_business_report
