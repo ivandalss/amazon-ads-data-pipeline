@@ -1,33 +1,33 @@
 ﻿name: dbt CI
 
-# Manual trigger only - click "Run workflow" in the Actions tab.
-# (Not on every push: this needs a GCP_SA_KEY repo secret to connect to
-# BigQuery, which isn't set up yet - a push-triggered run would just fail
-# red until it is. Once the secret is added, feel free to switch this back
-# to `on: push:`/`pull_request:` with the amazon_ads_dbt/** path filter.)
-#
-# Requires one repo secret: GCP_SA_KEY - the JSON key of a BigQuery
-# service account with access to the amazon-ads-mmm project. Add it under
-# Settings > Secrets and variables > Actions > New repository secret.
-
 on:
   workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   dbt-build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: amazon_ads_dbt
     steps:
       - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/1063528864686/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "dbt-service-account@amazon-ads-mmm.iam.gserviceaccount.com"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Install dbt
         run: pip install dbt-bigquery
-      - name: Write GCP service account key
-        run: echo '${{ secrets.GCP_SA_KEY }}' > /tmp/gcp_sa_key.json
       - name: Write dbt profiles.yml
         run: |
           mkdir -p ~/.dbt
@@ -37,8 +37,7 @@ jobs:
             outputs:
               ci:
                 type: bigquery
-                method: service-account
-                keyfile: /tmp/gcp_sa_key.json
+                method: oauth
                 project: amazon-ads-mmm
                 dataset: amazon_ads_warehouse
                 threads: 4
