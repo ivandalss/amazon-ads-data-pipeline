@@ -157,6 +157,29 @@ dbt docs generate && dbt docs serve   # lineage graph + column docs, browsable
 Requires a BigQuery service account with access to `amazon-ads-mmm` and a
 `profiles.yml` pointing at it (not committed — see `.gitignore`).
 
+## CI
+
+`.github/workflows/dbt_ci.yml` runs `dbt build` (models + tests) on every
+push to `amazon_ads_dbt/**`, and can also be triggered manually from the
+Actions tab.
+
+Auth uses **Workload Identity Federation**, not a service-account JSON key
+— GitHub's OIDC token is exchanged for short-lived GCP credentials at run
+time, so there's no long-lived secret to store, rotate, or leak. The
+workflow impersonates `dbt-service-account@amazon-ads-mmm.iam.gserviceaccount.com`,
+scoped so only workflows running from this exact repo
+(`ivandalss/amazon-ads-data-pipeline`) can request that impersonation
+(`--attribute-condition` on the identity pool provider). The service
+account itself only holds `roles/bigquery.dataEditor` and
+`roles/bigquery.jobUser` on the project — enough to build and test, nothing
+broader.
+
+Went with this over a JSON key because this project's org initially had
+`iam.disableServiceAccountKeyCreation` enforced, which blocked key creation
+entirely (see the git history for that dead end) — WIF sidesteps it
+by never creating a key in the first place, which is also just the current
+recommended pattern for CI → GCP auth regardless.
+
 ## Why this exists next to the SQLite version
 
 The root of the repo has a SQLite prototype of the same warehouse feeding a
