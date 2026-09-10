@@ -16,7 +16,13 @@ deduplicated as (
         bidding_strategy,
         row_number() over (
             partition by campaign_id
-            order by campaign_name
+            -- NULLS LAST: without this, BigQuery's default NULL-first
+            -- ascending order picks a row with a null campaign_name over
+            -- a row that has the real name, whenever both exist for the
+            -- same campaign_id (the bulk file has multiple entity-type
+            -- rows - Campaign, Keyword, Product Ad, etc. - sharing a
+            -- campaign_id, and not all of them carry the name).
+            order by campaign_name nulls last
         ) as rn
 
     from campaigns

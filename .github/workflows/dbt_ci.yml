@@ -1,12 +1,17 @@
 ﻿name: dbt CI
 
+# Manual trigger only - click "Run workflow" in the Actions tab.
+# (Not on every push: this needs a GCP_SA_KEY repo secret to connect to
+# BigQuery, which isn't set up yet - a push-triggered run would just fail
+# red until it is. Once the secret is added, feel free to switch this back
+# to `on: push:`/`pull_request:` with the amazon_ads_dbt/** path filter.)
+#
+# Requires one repo secret: GCP_SA_KEY - the JSON key of a BigQuery
+# service account with access to the amazon-ads-mmm project. Add it under
+# Settings > Secrets and variables > Actions > New repository secret.
+
 on:
-  push:
-    paths:
-      - "amazon_ads_dbt/**"
-  pull_request:
-    paths:
-      - "amazon_ads_dbt/**"
+  workflow_dispatch: {}
 
 jobs:
   dbt-build:

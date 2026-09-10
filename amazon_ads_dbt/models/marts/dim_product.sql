@@ -11,7 +11,10 @@ deduplicated as (
         asin,
         row_number() over (
             partition by sku
-            order by asin
+            -- NULLS LAST - see dim_campaign.sql for why this matters:
+            -- without it, a row with a null ASIN can win the dedup over
+            -- a row that has the real one.
+            order by asin nulls last
         ) as rn
 
     from campaigns

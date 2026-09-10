@@ -93,6 +93,28 @@ def hash_id(value: object, prefix: str = "ID") -> str | object:
     return f"{prefix}_{digest}"
 
 
+# Different Amazon reports label the same real-world entity with different
+# column headers ("ASIN" in one, "Advertised ASIN" in another, "ASIN
+# (Informational only)" in a third). hash_id()'s prefix used to be derived
+# from each column's own name, so the same underlying ASIN/SKU hashed to a
+# different-looking string per report (same digest, different prefix) —
+# breaking any downstream join on that identifier across reports, even
+# though the two values represented the same real product. This map forces
+# a single canonical prefix for columns known to carry the same identifier
+# space across reports, so sanitize_dataframe() below produces IDENTICAL
+# anonymized values for the same real ASIN/SKU no matter which report or
+# column name it came from.
+CANONICAL_ID_PREFIXES = {
+    "ASIN": "ASIN",
+    "Advertised ASIN": "ASIN",
+    "ASIN (Informational only)": "ASIN",
+    "(Parent) ASIN": "ASIN",
+    "(Child) ASIN": "ASIN",
+    "SKU": "SKU",
+    "Advertised SKU": "SKU",
+}
+
+
 def hash_url(value: object) -> str | object:
     """Replace a URL with a hashed placeholder."""
     if pd.isna(value) or not isinstance(value, str) or value.strip() == "":
@@ -114,7 +136,9 @@ def sanitize_dataframe(
     # 2. ID hashing
     for col in id_columns:
         if col in df.columns:
-            prefix = col.replace(" ", "_").replace("(", "").replace(")", "").strip("_")
+            prefix = CANONICAL_ID_PREFIXES.get(col) or (
+                col.replace(" ", "_").replace("(", "").replace(")", "").strip("_")
+            )
             df[col] = df[col].apply(lambda v, p=prefix: hash_id(v, prefix=p))
     # 3. URL scrubbing
     for col in df.columns:
@@ -132,7 +156,12 @@ def process_bulk_file(input_path: Path, output_dir: Path) -> None:
         id_columns=[
             "Campaign ID", "Ad Group ID", "Portfolio ID",
             "Ad ID", "Keyword ID", "Product Targeting ID",
-            "ASIN", "SKU",
+            # Real header is "ASIN (Informational only)", not "ASIN" - the
+            # plain "ASIN" entry never matched a column in this report, so
+            # this field was silently skipped and shipped un-anonymized.
+            # See CANONICAL_ID_PREFIXES above for why this also needs to
+            # hash to the same value as "Advertised ASIN" elsewhere.
+            "ASIN (Informational only)", "SKU",
         ],
     )
     out = output_dir / "bulk_sp_campaigns.csv"
