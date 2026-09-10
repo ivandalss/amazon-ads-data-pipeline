@@ -2,6 +2,11 @@
 
 on:
   workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "amazon_ads_dbt/**"
+      - ".github/workflows/dbt_ci.yml"
 
 permissions:
   contents: read
