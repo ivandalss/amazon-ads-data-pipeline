@@ -1,0 +1,45 @@
+﻿name: dbt CI
+
+on:
+  push:
+    paths:
+      - "amazon_ads_dbt/**"
+  pull_request:
+    paths:
+      - "amazon_ads_dbt/**"
+
+jobs:
+  dbt-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: amazon_ads_dbt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dbt
+        run: pip install dbt-bigquery
+      - name: Write GCP service account key
+        run: echo '${{ secrets.GCP_SA_KEY }}' > /tmp/gcp_sa_key.json
+      - name: Write dbt profiles.yml
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml <<EOF
+          amazon_ads_dbt:
+            target: ci
+            outputs:
+              ci:
+                type: bigquery
+                method: service-account
+                keyfile: /tmp/gcp_sa_key.json
+                project: amazon-ads-mmm
+                dataset: amazon_ads_warehouse
+                threads: 4
+                location: US
+          EOF
+      - name: dbt deps
+        run: dbt deps
+      - name: dbt build (run + test)
+        run: dbt build
