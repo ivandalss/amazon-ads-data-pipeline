@@ -140,8 +140,9 @@ Model fit: **R² = 0.995 · MAPE = 2.32%**
   Half-saturation points: SP=$3000, SB=$1500, DSP=$1000.
 
 ### Production improvements (not in scope here)
-- Bayesian MMM with PyMC for posterior distributions and uncertainty quantification
-- Grid search / MCMC to optimize adstock and saturation parameters (currently fixed)
+- Grid search to optimize adstock and saturation parameters in the OLS
+  model (currently fixed) — MCMC posterior sampling for uncertainty
+  quantification is already done, see the Google Meridian section below
 - External regressors: price index, competitor activity, macro indicators
 - Minimum spend constraints in budget optimizer per channel
 - Orchestration via Airflow DAG
@@ -250,18 +251,24 @@ End-to-end runtime on the sample dataset: ~15 seconds.
   negative keywords, ads-vs-organic synergy — real questions from agency life.
 - **MMM methodology:** adstock transforms, Hill saturation, OLS decomposition,
   budget optimization via constrained numerical optimization.
-- **Engineering trade-offs:** SQLite for portability (Postgres/BigQuery in
-  production), no orchestration for a 2-script pipeline (Airflow DAG in
-  production), synthetic data with documented limitations.
+- **Engineering trade-offs:** SQLite for portability in this MMM
+  prototype (the warehouse migration to BigQuery is done, in
+  `amazon_ads_dbt/` — not yet wired into the MMM notebooks), no
+  orchestration for a 2-script pipeline (Airflow DAG in production),
+  synthetic data with documented limitations.
 
 ---
 
 ## What's intentionally not in scope (and why)
 
+These apply to the SQLite/MMM side of the repo described below. The
+managed-warehouse gap is actually closed — see
+[`amazon_ads_dbt/`](amazon_ads_dbt/) for the same warehouse running on
+BigQuery with dbt, tests, docs, and CI; it just isn't what feeds the MMM
+notebooks yet (see "Why this exists" in that folder's README).
+
 - **No orchestration tool (Airflow/Prefect):** two scripts run in order is
   fine for a 4-source pipeline. In production, this would be a DAG.
-- **No managed warehouse (Snowflake/BigQuery):** SQLite makes the project
-  reproducible without cloud credentials. Schema and queries are portable.
 - **No streaming:** marketplace reports are batch by nature.
 - **No geo-level MMM:** national-level model used for simplicity. Meridian supports full geo-hierarchical modeling when geo-level data is available.
 
@@ -273,6 +280,15 @@ End-to-end runtime on the sample dataset: ~15 seconds.
 .
 ├── README.md
 ├── requirements.txt
+├── .github/
+│   └── workflows/
+│       └── dbt_ci.yml        # dbt build (run + test) on push, keyless GCP auth via WIF
+├── amazon_ads_dbt/           # dbt + BigQuery Analytics Engineering layer — see its own README
+│   ├── README.md
+│   ├── models/
+│   │   ├── staging/
+│   │   └── marts/
+│   └── ...
 ├── docs/
 │   └── architecture.svg
 ├── src/

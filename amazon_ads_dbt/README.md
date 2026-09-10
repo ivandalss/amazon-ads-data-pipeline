@@ -80,7 +80,7 @@ and `dbt_utils.unique_combination_of_columns` grain checks on
 ## Known data-quality findings (from adding the tests above)
 
 Adding `relationships`/`not_null` tests to this project surfaced two real
-bugs and one genuine (unfixable-by-code) data-modeling limitation.
+bugs and two genuine (unfixable-by-code) data-modeling limitations.
 
 **Bug 1 — `dim_campaign`/`dim_product` dedup picked the wrong row.**
 `row_number() over (partition by campaign_id order by campaign_name)`
