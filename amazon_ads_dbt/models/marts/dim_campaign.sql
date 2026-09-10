@@ -9,6 +9,7 @@ deduplicated as (
     select
         campaign_id,
         campaign_name,
+        product as ad_product,
         targeting_type,
         state,
         daily_budget,
@@ -28,6 +29,7 @@ final as (
     select
         campaign_id,
         campaign_name,
+        ad_product,
         targeting_type,
         state,
         daily_budget,

@@ -1,12 +1,26 @@
-# Amazon Ads Analytics — SQL Warehouse + Marketing Mix Model
+# Amazon Ads Analytics — dbt/BigQuery Warehouse + Marketing Mix Model
 
 A data engineering and analytics project that takes raw Amazon Advertising reports
-(in Excel), anonymizes them, models them into a star-schema SQL warehouse,
-runs analytical queries to answer real business questions, and builds a
-**Marketing Mix Model** to decompose sales attribution and optimize budget allocation
-across channels.
+(in Excel), anonymizes them, and models them into a star-schema warehouse in two
+parallel implementations: a **dbt + BigQuery Analytics Engineering layer**
+(staging → marts, tested and documented — see [`amazon_ads_dbt/`](amazon_ads_dbt/))
+and the original **SQLite prototype** below, which also feeds a
+**Marketing Mix Model** to decompose sales attribution and optimize budget
+allocation across channels.
 
-## Architecture
+## Analytics Engineering layer — dbt + BigQuery
+
+The production-shaped version of this warehouse lives in
+[`amazon_ads_dbt/`](amazon_ads_dbt/): the same four Amazon report sources,
+modeled as dbt staging → marts layers running against BigQuery, with data
+tests on every model (`unique`, `not_null`, `relationships`, and a
+`dbt_utils.unique_combination_of_columns` grain test) and a
+`fact_weekly_channel_performance` mart for trend reporting by ad product
+(SP/SB/SD). See that folder's own README for the model list, lineage, and
+how to run it — that's the piece most relevant if you're evaluating this repo
+for an **Analytics Engineer** role specifically.
+
+## Architecture (SQLite prototype + MMM)
 
 ![architecture](docs/architecture.svg)
 

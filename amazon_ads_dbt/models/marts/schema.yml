@@ -18,6 +18,12 @@ models:
         data_tests:
           - unique
           - not_null
+      - name: campaign_name
+        description: "Campaign name. Not the formal PK, but the join key used by every fact table (facts only carry campaign_name, not campaign_id)."
+        data_tests:
+          - not_null
+      - name: ad_product
+        description: "Ad product / channel this campaign belongs to (e.g. Sponsored Products, Sponsored Brands, Sponsored Display), from the bulk file's Product column."
 
   - name: dim_product
     description: "Product dimension, deduplicated from the bulk file. One row per SKU."
@@ -27,6 +33,8 @@ models:
         data_tests:
           - unique
           - not_null
+      - name: asin
+        description: "ASIN associated with the SKU. Referenced by fact_ads_daily.asin and (as parent_asin) by fact_business_report."
 
   - name: fact_ads_daily
     description: "Daily advertising performance grain: date x campaign x ASIN."
@@ -39,10 +47,26 @@ models:
         description: "Foreign key to dim_product (via ASIN)."
         data_tests:
           - not_null
+          - relationships:
+              to: ref('dim_product')
+              field: asin
+      - name: campaign_name
+        description: "Foreign key to dim_campaign (via campaign_name - see note on dim_campaign.campaign_name)."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_campaign')
+              field: campaign_name
       - name: impressions
         description: "Total impressions for the day/campaign/ASIN combination."
         data_tests:
           - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - date_id
+            - campaign_name
+            - asin
 
   - name: fact_search_term
     description: "Daily search term performance grain: date x campaign x search term x match type."
@@ -50,6 +74,13 @@ models:
       - name: date_id
         data_tests:
           - not_null
+      - name: campaign_name
+        description: "Foreign key to dim_campaign (via campaign_name)."
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_campaign')
+              field: campaign_name
       - name: customer_search_term
         description: "The actual search query that triggered the ad."
         data_tests:
@@ -63,3 +94,32 @@ models:
         data_tests:
           - unique
           - not_null
+          - relationships:
+              to: ref('dim_product')
+              field: asin
+
+  - name: fact_weekly_channel_performance
+    description: >
+      Weekly advertising performance rolled up by ad product / channel
+      (SP/SB/SD), built from fact_ads_daily joined to dim_campaign for the
+      channel attribute. One row per (week, ad_product).
+    columns:
+      - name: week
+        description: "Calendar week (BigQuery date_trunc(..., week)) the spend/sales fall into."
+        data_tests:
+          - not_null
+      - name: ad_product
+        description: "Ad product / channel from dim_campaign.ad_product; 'unknown' when a campaign_name has no bulk-file match."
+        data_tests:
+          - not_null
+      - name: total_spend
+        data_tests:
+          - not_null
+      - name: total_sales
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - week
+            - ad_product
