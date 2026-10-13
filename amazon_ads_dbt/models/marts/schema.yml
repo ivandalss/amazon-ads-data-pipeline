@@ -45,9 +45,17 @@ models:
 
   - name: fact_ads_daily
     description: >
-      Daily advertising performance grain: date x campaign x ASIN.
-      Incremental (insert_overwrite, partitioned on date_id) with a 3-day
-      lookback window to absorb late-arriving/corrected report rows.
+      Advertising performance grain: report row x campaign x ASIN.
+      IMPORTANT - despite the model name, the source Advertised Product
+      report was exported as a one-month (Feb 2025) *summary*, not with a
+      daily breakdown: each row is the period total for a campaign/ASIN,
+      and Start/End Date are its first/last active day in the period
+      (~50% of rows span the full 1-28 Feb). date_id is therefore the
+      first active date, not a day of activity, so this table supports
+      period totals and cross-sectional cuts but not daily or weekly
+      trends. Name kept for the intended daily cadence of a production
+      feed. Materialized as a plain table (incremental config documented
+      in the model SQL; the BigQuery sandbox blocks the DML it needs).
     columns:
       - name: date_id
         description: "Foreign key to dim_date."
@@ -98,7 +106,12 @@ models:
               - asin
 
   - name: fact_search_term
-    description: "Daily search term performance grain: date x campaign x search term x match type."
+    description: >
+      Search term performance grain: report row x campaign x search term x
+      match type. Like fact_ads_daily, the source Search Term report is a
+      Feb 2025 summary export (Start/End Date = first/last active day of
+      each search term; ~73% of rows are single-day terms), so date_id is
+      not a daily activity series.
     columns:
       - name: date_id
         data_tests:
@@ -147,9 +160,15 @@ models:
 
   - name: fact_weekly_channel_performance
     description: >
-      Weekly advertising performance rolled up by ad product / channel
+      Advertising performance rolled up by week and ad product / channel
       (SP/SB/SD), built from fact_ads_daily joined to dim_campaign for the
-      channel attribute. One row per (week, ad_product).
+      channel attribute. One row per (week, ad_product). CAVEAT: because
+      fact_ads_daily rows are period summaries keyed on their first active
+      date, "week" is the week each row's activity started, not the week
+      the spend happened (most rows start on 1 Feb 2025, so they land in
+      the week of 26 Jan). Use for totals by ad product, not as a trend.
+      No row-level ratios are stored (ROAS/ACOS are computed downstream as
+      ratios of sums).
     columns:
       - name: week
         description: "Calendar week (BigQuery date_trunc(..., week)) the spend/sales fall into."

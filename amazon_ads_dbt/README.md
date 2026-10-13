@@ -27,10 +27,10 @@ and one weekly rollup:
 | `dim_date` | one row per day, 2025-01-01 to 2026-12-31 | built with `dbt_utils.date_spine` |
 | `dim_campaign` | one row per `campaign_id` | deduplicated from the bulk file; also carries `ad_product` (SP/SB/SD) |
 | `dim_product` | one row per `sku` | deduplicated from the bulk file |
-| `fact_ads_daily` | date x campaign x ASIN | from `stg_advertised_products`; designed as incremental, currently a plain table (see below) |
-| `fact_search_term` | date x campaign x search term x match type | from `stg_search_terms` |
+| `fact_ads_daily` | report row x campaign x ASIN (keyed on first active date) | from `stg_advertised_products`; designed as incremental, currently a plain table (see below). The sample is a monthly summary export, not daily rows - see the monthly-summaries note under Known data-quality findings |
+| `fact_search_term` | report row x campaign x search term x match type | from `stg_search_terms`; same summary-export caveat |
 | `fact_business_report` | one row per parent ASIN | organic + ad sales snapshot |
-| `fact_weekly_channel_performance` | week x ad_product | `fact_ads_daily` joined to `dim_campaign` for the channel, rolled up weekly |
+| `fact_weekly_channel_performance` | week x ad_product | `fact_ads_daily` joined to `dim_campaign` for the channel, rolled up weekly. On the sample data, "week" is the week each row's activity *started* - use it for totals by ad product, not as a trend |
 
 Everything defaults to `+materialized: view` (see `dbt_project.yml`), except
 `fact_ads_daily`, which is `materialized='table'`.
@@ -115,10 +115,9 @@ elsewhere. Fixed both: corrected the column name, and added
 regardless of source column. Verified directly against the raw files
 (not guessed): before the fix, bulk vs. advertised-product ASINs had 45
 unique values on each side and **0** overlap; after, still 45 and 45, with
-**45/45** overlapping. Re-running `python src/anonymize.py` and reloading
-`data/processed/*.csv` into BigQuery is required to pick this up — the
-already-loaded `raw_*` tables in BigQuery still have the old, inconsistent
-anonymization until that's done.
+**45/45** overlapping. The processed CSVs were regenerated with the fixed
+`anonymize.py` and reloaded into BigQuery (Oct 2026); the
+`fact_ads_daily.asin -> dim_product.asin` relationship test now passes.
 
 **Real limitation (not a bug) — `fact_business_report.parent_asin` vs.
 `dim_product.asin`.** Even after fixing bug 2, most bulk-file ASINs don't
@@ -144,6 +143,43 @@ smaller `fact_search_term` gap below, just larger here because the AP
 report spans a full month. Set to `severity: warn`; closing it fully would
 need a bulk-file pull from closer to the report's own date range, not a
 code fix.
+
+**Real limitation (not a bug) — the sample reports are monthly summaries,
+not daily rows.** Checked against the raw exports: the Advertised Product
+and Search Term reports were pulled for Feb 2025 with a *summary* time
+unit. Each row is the period total for a campaign/ASIN (or search term),
+and `Start Date`/`End Date` are its first and last active day in the
+period - ~50% of Advertised Product rows span the full 1-28 Feb, and ~73%
+of Search Term rows are single-day terms. So `date_id` in the facts is a
+first-active date, not a day of activity: the marts support period totals
+and cross-sectional cuts (by campaign, ASIN, search term, ad product), but
+not daily or weekly trends. `fact_ads_daily` keeps its name because it is
+the intended grain of a production feed pulled with a daily time unit.
+`fact_weekly_channel_performance` also no longer stores a row-level `roas`
+column: ratios are computed downstream as ratios of sums, so a BI tool
+can't average them across rows.
+
+## mmm/ — synthetic weekly marts for the MMM and the dashboard
+
+Because the real sample is a one-month snapshot, the MMM work runs on a
+2-year **synthetic** dataset with known ground-truth parameters, generated
+by `src/mmm_prep.py` (committed in `data/mmm/`) and loaded into a separate
+BigQuery dataset, `mmm_synthetic`, so it never mixes with the real data.
+
+| Model | Grain | Notes |
+|---|---|---|
+| `stg_mmm_weekly` | one row per week | 1:1 with `mmm_synthetic.weekly_synthetic`; drops the precomputed row-level ratios (ROAS, TACoS, CTR) |
+| `fct_mmm_weekly` | one row per week | totals and trends for the dashboard |
+| `fct_mmm_channel_spend_weekly` | week x channel | long format (SP / SB / DSP) so the BI layer can break spend down by channel |
+
+Tests: `not_null` + `unique` on `fct_mmm_weekly.week_start`, and a
+`dbt_utils.unique_combination_of_columns` grain test on
+`(week_start, channel)`.
+
+These marts feed a Data Studio dashboard (scorecards with year-over-year
+comparison, weekly sales vs spend, spend by channel, ads vs organic sales,
+channel mix): [Amazon Ads — Simulated Performance Dashboard](https://datastudio.google.com/reporting/6c8e6915-9916-4f4a-937c-871c8abd31d9).
+The data is simulated and labelled as such on the dashboard.
 
 ## How to run
 

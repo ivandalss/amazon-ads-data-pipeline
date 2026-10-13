@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: fct_mmm_weekly
+    columns:
+      - name: week_start
+        data_tests:
+          - not_null
+          - unique
+  - name: fct_mmm_channel_spend_weekly
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: ['week_start', 'channel']
+    columns:
+      - name: spend
+        data_tests:
+          - not_null

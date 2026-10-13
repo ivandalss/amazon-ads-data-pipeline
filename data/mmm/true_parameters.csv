@@ -1,0 +1,5 @@
+param,value,description
+beta_sp,3.5,Sponsored Products response coefficient
+beta_sb,2.0,Sponsored Brands response coefficient
+beta_dsp,1.2,DSP response coefficient
+baseline,8000.0,Weekly organic sales floor

@@ -18,4 +18,7 @@ __pycache__/
 # dbt 
 amazon_ads_dbt/target/ 
 amazon_ads_dbt/dbt_packages/ 
-logs/ 
+logs/
+
+# Personal working files (CVs, cover letters) - never commit
+Claude outputs/

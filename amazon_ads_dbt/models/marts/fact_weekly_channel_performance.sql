@@ -34,8 +34,8 @@ aggregated as (
         sum(spend)   as total_spend,
         sum(sales)   as total_sales,
         sum(clicks)  as total_clicks,
-        sum(orders)  as total_orders,
-        safe_divide(sum(sales), nullif(sum(spend), 0)) as roas
+        sum(orders)  as total_orders
+
 
     from joined
     group by

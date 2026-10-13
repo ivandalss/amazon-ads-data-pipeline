@@ -4,9 +4,19 @@ MMM Data Preparation
 Pulls weekly aggregated data from the warehouse (fact_ads_daily +
 fact_business_report) and prepares it for Marketing Mix Modeling.
 
-Because the sample dataset covers only ~5 weeks, this module also contains
-a synthetic data generator that produces 2 years of realistic weekly data
-with the same schema. The synthetic data is clearly labelled and documented.
+The real sample is a single one-month (Feb 2025) *summary* export: each row
+is a campaign/ASIN total for the period, not a daily or weekly series, so it
+cannot support an MMM. This module therefore also contains a synthetic data
+generator that produces 2 years of weekly data with the same schema and
+known ground-truth parameters. The synthetic data is clearly labelled.
+
+Known limitation (fix planned for v2): the generator's channel response is
+    beta * spend * hill(adstock(spend))
+which is NOT a saturating curve. Marginal ROI converges to beta instead of
+falling toward zero (e.g. SP still returns ~$3.5 per $1 at 10x average
+spend), so a budget optimizer fitted on this data pushes the whole budget
+into the highest-beta channel. A standard saturating form would be
+    beta_max * hill(adstock(spend)).
 
 Outputs
 -------
@@ -21,9 +31,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-HERE = Path(__file__).resolve().parent
-DB_PATH = HERE / "data" / "warehouse.db"
-MMM_DIR = HERE / "data" / "mmm"
+# Repo root (this file lives in src/), so outputs land in <repo>/data/mmm,
+# which is where notebooks/mmm_model.ipynb reads them from.
+ROOT = Path(__file__).resolve().parents[1]
+DB_PATH = ROOT / "data" / "warehouse.db"
+MMM_DIR = ROOT / "data" / "mmm"
 
 
 # ── 1. Extract real data from warehouse ──────────────────────────────────────
